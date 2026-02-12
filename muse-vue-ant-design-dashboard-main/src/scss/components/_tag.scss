@@ -1,0 +1,40 @@
+// _tag.scss
+// 
+// Template's tag styles.
+// 
+
+
+// Tags
+.tag-status {
+	padding: 2px 12px;
+	font-weight: $fw-bold;
+}
+// / Tags
+
+// Estados (Activo / Inactivo)
+// Usamos clases ya presentes en los componentes.
+.ant-tag.ant-tag-primary {
+	background: #dcfce7;   // verde suave
+	border-color: #86efac; // borde verde
+	color: #166534;        // texto verde
+}
+
+.ant-tag.ant-tag-muted {
+	background: #f3f4f6;   // gris suave
+	border-color: #e5e7eb; // borde gris
+	color: #6b7280;        // texto gris
+}
+
+// Para “Sistema” en Roles (no confundir con Activo)
+.ant-tag.ant-tag-system {
+	background: #ede9fe;   // violeta suave
+	border-color: #c4b5fd; // borde violeta
+	color: #5b21b6;        // texto violeta
+}
+
+// Para “Super usuario” en Roles
+.ant-tag.ant-tag-super {
+	background: #cffafe;   // cyan suave
+	border-color: #67e8f9; // borde cyan
+	color: #155e75;        // texto cyan oscuro
+}

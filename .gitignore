@@ -1,0 +1,36 @@
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node / Vue
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Laravel
+/OBSBack/vendor/
+/OBSBack/node_modules/
+/OBSBack/storage/*.key
+/OBSBack/storage/logs/
+/OBSBack/storage/framework/cache/
+/OBSBack/storage/framework/sessions/
+/OBSBack/storage/framework/views/
+/OBSBack/bootstrap/cache/
+
+# IDE / OS
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+

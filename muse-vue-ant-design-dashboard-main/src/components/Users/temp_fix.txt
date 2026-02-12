@@ -1,0 +1,80 @@
+// Archivo temporal con el método canEditUser corregido
+canEditUser(row) {
+			// Obtener el usuario actual logueado de múltiples fuentes
+			let currentUser = null;
+			
+			// Intentar obtener del store de Vue
+			if (this.$store?.state?.user) {
+				currentUser = this.$store.state.user;
+			}
+			
+			// Intentar obtener del localStorage
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('user');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing user from localStorage:', e);
+					}
+				}
+			}
+			
+			// Intentar obtener del localStorage con otra clave
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('currentUser');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing currentUser from localStorage:', e);
+					}
+				}
+			}
+			
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// DEBUG simple
+			console.log('canEditUser called - currentRole:', currentRole);
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar si el usuario está inactivo o eliminado
+			const isInactive = !!(row && row._raw && row._raw.isInactive);
+			const isDeleted = !!(row && row._raw && row._raw.isDeleted);
+			
+			// Si está inactivo o eliminado, no se puede editar
+			if (isInactive || isDeleted) {
+				return false;
+			}
+			
+			// Roles que pueden editar usuarios
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			
+			// Verificar si el usuario actual tiene un rol permitido
+			const canEdit = allowedRoles.includes(currentRole);
+			
+			// Si no tiene rol permitido, no puede editar a nadie
+			if (!canEdit) {
+				return false;
+			}
+			
+			// No permitir editar Super usuarios (excepto si el actual también es Super usuario)
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			
+			// Solo Super usuarios pueden editar otros Super usuarios
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return false;
+			}
+			
+			// Los usuarios no pueden editarse a sí mismos (excepto Super usuarios y Administradores)
+			if (currentUserId === targetUserId && !isCurrentSuperUser && currentRole.toLowerCase() !== 'administrador') {
+				return false;
+			}
+			
+			return canEdit;
+		},

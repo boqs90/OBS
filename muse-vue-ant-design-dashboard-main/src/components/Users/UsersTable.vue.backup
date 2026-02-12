@@ -1,0 +1,844 @@
+<template>
+	<a-card :bordered="false" class="header-solid h-full" :bodyStyle="{ padding: 0 }">
+		<template #title>
+			<!-- Título arriba, controles abajo alineados -->
+			<div class="table-header">
+				<div class="table-header-top">
+					<h5 class="font-semibold m-0">Usuarios</h5>
+				</div>
+
+				<div class="table-header-controls">
+					<a-input-search
+						v-model="searchText"
+						:maxLength="200"
+						allowClear
+						placeholder="Buscar..."
+						class="table-search"
+					/>
+					<a-radio-group v-model="usersHeaderBtns" size="small" buttonStyle="solid">
+						<a-radio-button value="active">Activos</a-radio-button>
+						<a-radio-button value="disabled">Desactivados</a-radio-button>
+						<a-radio-button value="deleted">Eliminados</a-radio-button>
+					</a-radio-group>
+					<a-button class="btn-add-outline" @click="$emit('openAddUserModal')">
+						<svg class="btn-add-outline__icon" viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 5v14M5 12h14" fill="none" />
+						</svg>
+						Registrar
+					</a-button>
+				</div>
+			</div>
+		</template>
+
+		<a-table
+			:rowKey="getRowKey"
+			:columns="columns"
+			:data-source="filteredData"
+			:loading="loading"
+			:pagination="{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }"
+			:locale="{ emptyText: 'No hay datos' }"
+			:scroll="{ x: 1100 }"
+			:expandedRowKeys="expandedRowKeys"
+			:expandIconColumnIndex="-1"
+			@expand="onExpand"
+		>
+			<template slot="userName" slot-scope="userName, record">
+				<div
+					class="table-avatar-info table-avatar-info--left table-firstcol--expandable"
+					role="button"
+					tabindex="0"
+					@click="toggleExpand(record)"
+					@keydown.enter.prevent="toggleExpand(record)"
+					@keydown.space.prevent="toggleExpand(record)"
+				>
+					<a-avatar
+						class="table-clickable-image"
+						shape="square"
+						:src="userName.avatar"
+						:style="userName.avatar ? {} : { backgroundColor: '#d9d9d9', cursor: 'default' }"
+						@click.stop="userName.avatar ? openImagePreview(userName.avatar) : null"
+					>
+						<a-icon v-if="!userName.avatar" type="camera" style="color: #8c8c8c; font-size: 16px;" />
+					</a-avatar>
+					<div class="avatar-info">
+						<h6 class="table-firstcol__title">
+							<span class="table-firstcol__caret" aria-hidden="true">{{ isExpanded(record) ? '▾' : '▸' }}</span>
+							<span>{{ userName.name }}</span>
+						</h6>
+					</div>
+				</div>
+			</template>
+
+			<template slot="status" slot-scope="status">
+				<a-tag class="tag-status" :class="String(status) === 'Activo' ? 'ant-tag-primary' : 'ant-tag-muted'">
+					{{ status }}
+				</a-tag>
+			</template>
+
+			<template slot="actions" slot-scope="_, row">
+				<!-- Si está eliminado, queda como registro (solo lectura) -->
+				<div v-if="row && row._raw && row._raw.isDeleted" class="table-actions">
+					<a-tag class="tag-status ant-tag-muted">Registro</a-tag>
+				</div>
+				<div v-else class="table-actions">
+					<a-tooltip
+						:title="getEditDisabledMessage(row)"
+						:disabled="canEditUser(row)"
+					>
+						<a-button
+							size="small"
+							type="primary"
+							ghost
+							:disabled="!canEditUser(row)"
+							@click="$emit('editUser', row)"
+						>
+							Editar
+						</a-button>
+					</a-tooltip>
+
+					<a-tooltip
+						:title="getPermissionsDisabledMessage(row)"
+						:disabled="canManagePermissions(row)"
+					>
+						<a-button
+							size="small"
+							type="primary"
+							ghost
+							:disabled="!canManagePermissions(row)"
+							@click="$emit('openUserPermissions', row)"
+						>
+							Permisos
+						</a-button>
+					</a-tooltip>
+
+					<a-popconfirm
+						title="¿Estás seguro de resetear la contraseña de este usuario? Se generará una contraseña temporal y se le notificará."
+						ok-text="Sí"
+						cancel-text="No"
+						@confirm="$emit('resetUserPassword', row)"
+					>
+						<a-tooltip
+						:title="getResetPasswordDisabledMessage(row)"
+						:disabled="canResetPassword(row)"
+					>
+						<a-button
+							size="small"
+							type="danger"
+							ghost
+							:disabled="!canResetPassword(row)"
+						>
+							Resetear Contraseña
+						</a-button>
+					</a-tooltip>
+					</a-popconfirm>
+				</div>
+			</template>
+
+			<template slot="expandedRowRender" slot-scope="record">
+				<div class="user-expanded">
+					<div class="user-expanded__header">
+						<div class="user-expanded__header-left">
+							<div class="user-expanded__title">
+								{{ (record && record.userName && record.userName.name) ? record.userName.name : 'Detalle del usuario' }}
+							</div>
+						</div>
+
+						<!-- Acciones arriba (alineadas) -->
+						<div class="user-expanded__actions">
+							<!-- Eliminado: solo lectura -->
+							<template v-if="record && record._raw && record._raw.isDeleted">
+								<a-tag class="tag-status ant-tag-muted">Registro eliminado (solo lectura)</a-tag>
+							</template>
+
+							<!-- Desactivado: permitir activar -->
+							<template v-else-if="record && record._raw && record._raw.isInactive">
+								<a-popconfirm
+									title="¿Deseas volver a activar este usuario?"
+									ok-text="Sí, activar"
+									cancel-text="No"
+									@confirm="$emit('activateUser', record)"
+								>
+									<a-button size="small" type="primary" ghost>
+										Activar
+									</a-button>
+								</a-popconfirm>
+							</template>
+
+							<!-- Activo: permitir desactivar y eliminar -->
+							<template v-else>
+								<a-popconfirm
+									title="¿Seguro que deseas desactivar este usuario?"
+									ok-text="Sí, desactivar"
+									cancel-text="No"
+									@confirm="$emit('deactivateUser', record)"
+								>
+									<a-button size="small" class="btn-warning-outline">
+										Desactivar
+									</a-button>
+								</a-popconfirm>
+
+								<a-popconfirm
+									title="¿Seguro que deseas eliminar este usuario?"
+									ok-text="Sí, eliminar"
+									ok-type="danger"
+									cancel-text="No"
+									@confirm="$emit('deleteUser', record)"
+								>
+									<a-button size="small" type="danger" ghost>
+										Eliminar
+									</a-button>
+								</a-popconfirm>
+							</template>
+						</div>
+					</div>
+
+					<div class="user-expanded__grid">
+						<div class="user-expanded__item">
+							<div class="user-expanded__label">Correo</div>
+							<div class="user-expanded__value">{{ (record && record.email) ? record.email : (record && record._raw && record._raw.email) ? record._raw.email : '-' }}</div>
+						</div>
+						<div class="user-expanded__item">
+							<div class="user-expanded__label">Creado</div>
+							<div class="user-expanded__value">{{ (record && record.createdAt) ? record.createdAt : '-' }}</div>
+						</div>
+						<div class="user-expanded__item">
+							<div class="user-expanded__label">Finalización</div>
+							<div class="user-expanded__value">{{ (record && record.endedAt) ? record.endedAt : '-' }}</div>
+						</div>
+					</div>
+				</div>
+			</template>
+		</a-table>
+
+		<!-- Preview imagen (al hacer click) -->
+		<a-modal
+			:visible="imagePreviewVisible"
+			:footer="null"
+			centered
+			:destroyOnClose="true"
+			@cancel="closeImagePreview"
+		>
+			<img
+				v-if="imagePreviewSrc"
+				:src="imagePreviewSrc"
+				alt="Vista previa"
+				style="width: 100%; max-height: 70vh; object-fit: contain;"
+			/>
+		</a-modal>
+	</a-card>
+</template>
+
+<script>
+export default ({
+	props: {
+		data: {
+			type: Array,
+			default: () => [],
+		},
+		loading: {
+			type: Boolean,
+			default: false,
+		},
+		columns: {
+			type: Array,
+			default: () => [],
+		},
+	},
+	data() {
+		return {
+			usersHeaderBtns: 'active',
+			searchText: '',
+			imagePreviewVisible: false,
+			imagePreviewSrc: '',
+			expandedRowKeys: [],
+		}
+	},
+	computed: {
+		filteredData() {
+			const normalize = (v) => String(v ?? '').trim().toLowerCase();
+			const status = (row) => normalize(row?.status);
+
+			let rows = this.data;
+			if (this.usersHeaderBtns === 'active') {
+				rows = rows.filter((row) => ['activo', 'active', '1', 'true'].includes(status(row)));
+			}
+
+			if (this.usersHeaderBtns === 'disabled') {
+				rows = rows.filter((row) => [
+					'inactivo',
+					'inactive',
+					'desactivado',
+					'desactivados',
+					'deactivated',
+					'deshabilitado', // compatibilidad por si quedaron datos viejos
+					'disabled',
+					'0',
+					'false'
+				].includes(status(row)));
+			}
+
+			if (this.usersHeaderBtns === 'deleted') {
+				rows = rows.filter((row) => ['eliminado', 'deleted'].includes(status(row)));
+			}
+
+			const q = normalize(this.searchText);
+			if (!q) return rows;
+
+			const toHaystack = (row) => {
+				const parts = [
+					row?.userName?.name,
+					row?.userName?.email,
+					row?.email,
+					row?.role,
+					row?.status,
+				];
+				return normalize(parts.filter(Boolean).join(' '));
+			};
+
+			return rows.filter((row) => toHaystack(row).includes(q));
+		},
+	},
+	methods: {
+		getRowKey(record) {
+			return record?.key ?? record?.id ?? record?._raw?.id;
+		},
+		isExpanded(record) {
+			const k = this.getRowKey(record);
+			return this.expandedRowKeys.includes(k);
+		},
+		toggleExpand(record) {
+			const k = this.getRowKey(record);
+			if (k == null) return;
+			if (this.expandedRowKeys.includes(k)) {
+				this.expandedRowKeys = this.expandedRowKeys.filter((x) => x !== k);
+				return;
+			}
+			this.expandedRowKeys = [...this.expandedRowKeys, k];
+		},
+		onExpand(expanded, record) {
+			const k = this.getRowKey(record);
+			if (k == null) return;
+			if (expanded) {
+				if (!this.expandedRowKeys.includes(k)) this.expandedRowKeys = [...this.expandedRowKeys, k];
+			} else {
+				this.expandedRowKeys = this.expandedRowKeys.filter((x) => x !== k);
+			}
+		},
+		openImagePreview(src) {
+			if (!src) return;
+			this.imagePreviewSrc = src;
+			this.imagePreviewVisible = true;
+		},
+		closeImagePreview() {
+			this.imagePreviewVisible = false;
+			this.imagePreviewSrc = '';
+		},
+		canManagePermissions(row) {
+			// Obtener el usuario actual logueado de múltiples fuentes
+			let currentUser = null;
+			
+			// Intentar obtener del store de Vue
+			if (this.$store?.state?.user) {
+				currentUser = this.$store.state.user;
+			}
+			
+			// Intentar obtener del localStorage
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('user');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing user from localStorage:', e);
+					}
+				}
+			}
+			
+			// Intentar obtener del localStorage con otra clave
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('currentUser');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing currentUser from localStorage:', e);
+					}
+				}
+			}
+			
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// DEBUG simple
+			console.log('canManagePermissions called - currentRole:', currentRole);
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			
+			// Roles que pueden gestionar permisos
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			
+			// Verificar si el usuario actual tiene un rol permitido
+			const canManage = allowedRoles.includes(currentRole);
+			
+			// Si no tiene rol permitido, no puede gestionar permisos de nadie
+			if (!canManage) {
+				console.log('canManagePermissions returning false - role not allowed');
+				return false;
+			}
+			
+			// No permitir gestionar permisos de Super usuarios (excepto si el actual también es Super usuario)
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			
+			// Solo Super usuarios pueden gestionar otros Super usuarios
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				console.log('canManagePermissions returning false - target is Super user');
+				return false;
+			}
+			
+			// Los usuarios no pueden gestionar sus propios permisos (excepto Super usuarios)
+			if (currentUserId === targetUserId && !isCurrentSuperUser) {
+				console.log('canManagePermissions returning false - own permissions');
+				return false;
+			}
+			
+			console.log('canManagePermissions returning true');
+			return canManage;
+		},
+		getPermissionsDisabledMessage(row) {
+			// Obtener el usuario actual logueado
+			const currentUser = this.$store?.state?.user || JSON.parse(localStorage.getItem('user') || '{}');
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar restricciones
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			const hasAllowedRole = allowedRoles.includes(currentRole);
+			
+			// Mensajes específicos para cada restricción
+			if (!hasAllowedRole) {
+				return 'No tienes permisos para gestionar permisos de usuarios';
+			}
+			
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return 'Solo los Super usuarios pueden gestionar permisos de otros Super usuarios';
+			}
+			
+			if (currentUserId === targetUserId && !isCurrentSuperUser) {
+				return 'No puedes gestionar tus propios permisos';
+			}
+			
+			return '';
+		},
+		canEditUser(row) {\n\t\t// Obtener el usuario actual logueado de m�ltiples fuentes\n\t\tlet currentUser = null;\n\t\t\n\t\t// Intentar obtener del store de Vue\n\t\tif (this.\.state?.user) {\n\t\t\tcurrentUser = this.\.state.user;\n\t\t}\n\t\t\n\t\t// Intentar obtener del localStorage\n\t\tif (!currentUser) {\n\t\t\tconst storedUser = localStorage.getItem(" user\);\n\t\t\tif (storedUser) {\n\t\t\t\ttry {\n\t\t\t\t\tcurrentUser = JSON.parse(storedUser);\n\t\t\t\t} catch (e) {\n\t\t\t\t\tconsole.error(\Error parsing user from localStorage:\, e);\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\t\n\t\tconst currentRole = currentUser?.role || \\;\n\t\tconst currentUserId = currentUser?.id;\n\t\t\n\t\t// DEBUG\n\t\tconsole.log(\canEditUser called - currentRole:\, currentRole);\n\t\t\n\t\t// Obtener el ID del usuario objetivo
+			// Obtener el usuario actual logueado de múltiples fuentes
+			let currentUser = null;
+			
+			// Intentar obtener del store de Vue
+			if (this.$store?.state?.user) {
+				currentUser = this.$store.state.user;
+			}
+			
+			// Intentar obtener del localStorage
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('user');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing user from localStorage:', e);
+					}
+				}
+			}
+			
+			// Intentar obtener del localStorage con otra clave
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('currentUser');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing currentUser from localStorage:', e);
+					}
+				}
+			}
+			
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar si el usuario está inactivo o eliminado
+			const isInactive = !!(row && row._raw && row._raw.isInactive);
+			const isDeleted = !!(row && row._raw && row._raw.isDeleted);
+			
+			// Si está inactivo o eliminado, no se puede editar
+			if (isInactive || isDeleted) {
+				return false;
+			}
+			
+			// Roles que pueden editar usuarios
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			
+			// Verificar si el usuario actual tiene un rol permitido
+			const canEdit = allowedRoles.includes(currentRole);
+			
+			// Si no tiene rol permitido, no puede editar a nadie
+			if (!canEdit) {
+				return false;
+			}
+			
+			// No permitir editar Super usuarios (excepto si el actual también es Super usuario)
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			
+			// Solo Super usuarios pueden editar otros Super usuarios
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return false;
+			}
+			
+			// Los usuarios no pueden editarse a sí mismos (excepto Super usuarios y Administradores)
+			if (currentUserId === targetUserId && !isCurrentSuperUser && currentRole.toLowerCase() !== 'administrador') {
+				return false;
+			}
+			
+			return canEdit;
+		},
+		getEditDisabledMessage(row) {
+			// Obtener el usuario actual logueado
+			const currentUser = this.$store?.state?.user || JSON.parse(localStorage.getItem('user') || '{}');
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar si el usuario está inactivo o eliminado
+			const isInactive = !!(row && row._raw && row._raw.isInactive);
+			const isDeleted = !!(row && row._raw && row._raw.isDeleted);
+			
+			// Mensajes específicos para cada restricción
+			if (isDeleted) {
+				return 'Este usuario está eliminado y no se puede editar';
+			}
+			
+			if (isInactive) {
+				return 'Este usuario está desactivado y no se puede editar';
+			}
+			
+			// Verificar restricciones de rol
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			const hasAllowedRole = allowedRoles.includes(currentRole);
+			
+			if (!hasAllowedRole) {
+				return 'No tienes permisos para editar usuarios';
+			}
+			
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return 'Solo los Super usuarios pueden editar a otros Super usuarios';
+			}
+			
+			if (currentUserId === targetUserId && !isCurrentSuperUser && currentRole.toLowerCase() !== 'administrador') {
+				return 'No puedes editar tu propio usuario';
+			}
+			
+			return '';
+		},
+		canResetPassword(row) {\n\t\t// Obtener el usuario actual logueado de m�ltiples fuentes\n\t\tlet currentUser = null;\n\t\t\n\t\t// Intentar obtener del store de Vue\n\t\tif (this.\.state?.user) {\n\t\t\tcurrentUser = this.\.state.user;\n\t\t}\n\t\t\n\t\t// Intentar obtener del localStorage\n\t\tif (!currentUser) {\n\t\t\tconst storedUser = localStorage.getItem(" user\);\n\t\t\tif (storedUser) {\n\t\t\t\ttry {\n\t\t\t\t\tcurrentUser = JSON.parse(storedUser);\n\t\t\t\t} catch (e) {\n\t\t\t\t\tconsole.error(\Error parsing user from localStorage:\, e);\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\t\n\t\tconst currentRole = currentUser?.role || \\;\n\t\tconst currentUserId = currentUser?.id;\n\t\t\n\t\t// DEBUG\n\t\tconsole.log(\canResetPassword called - currentRole:\, currentRole);\n\t\t\n\t\t// Obtener el ID del usuario objetivo
+			// Obtener el usuario actual logueado de múltiples fuentes
+			let currentUser = null;
+			
+			// Intentar obtener del store de Vue
+			if (this.$store?.state?.user) {
+				currentUser = this.$store.state.user;
+			}
+			
+			// Intentar obtener del localStorage
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('user');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing user from localStorage:', e);
+					}
+				}
+			}
+			
+			// Intentar obtener del localStorage con otra clave
+			if (!currentUser) {
+				const storedUser = localStorage.getItem('currentUser');
+				if (storedUser) {
+					try {
+						currentUser = JSON.parse(storedUser);
+					} catch (e) {
+						console.error('Error parsing currentUser from localStorage:', e);
+					}
+				}
+			}
+			
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar si el usuario está inactivo o eliminado
+			const isInactive = !!(row && row._raw && row._raw.isInactive);
+			const isDeleted = !!(row && row._raw && row._raw.isDeleted);
+			
+			// Si está inactivo o eliminado, no se puede resetear contraseña
+			if (isInactive || isDeleted) {
+				return false;
+			}
+			
+			// Roles que pueden resetear contraseñas
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			
+			// Verificar si el usuario actual tiene un rol permitido
+			const canReset = allowedRoles.includes(currentRole);
+			
+			// Si no tiene rol permitido, no puede resetear contraseñas de nadie
+			if (!canReset) {
+				return false;
+			}
+			
+			// No permitir resetear contraseña de Super usuarios (excepto si el actual también es Super usuario)
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			
+			// Solo Super usuarios pueden resetear contraseña de otros Super usuarios
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return false;
+			}
+			
+			// Los usuarios no pueden resetear su propia contraseña (excepto Super usuarios)
+			if (currentUserId === targetUserId && !isCurrentSuperUser) {
+				return false;
+			}
+			
+			return canReset;
+		},
+		getResetPasswordDisabledMessage(row) {
+			// Obtener el usuario actual logueado
+			const currentUser = this.$store?.state?.user || JSON.parse(localStorage.getItem('user') || '{}');
+			const currentRole = currentUser?.role || '';
+			const currentUserId = currentUser?.id;
+			
+			// Obtener el ID del usuario objetivo
+			const targetUserId = row?._raw?.id || row?.id || row?.key;
+			const targetUserRole = row?._raw?.role || row?.role || '';
+			
+			// Verificar si el usuario está inactivo o eliminado
+			const isInactive = !!(row && row._raw && row._raw.isInactive);
+			const isDeleted = !!(row && row._raw && row._raw.isDeleted);
+			
+			// Mensajes específicos para cada restricción
+			if (isDeleted) {
+				return 'Este usuario está eliminado y no se puede resetear la contraseña';
+			}
+			
+			if (isInactive) {
+				return 'Este usuario está desactivado y no se puede resetear la contraseña';
+			}
+			
+			// Verificar restricciones de rol
+			const isTargetSuperUser = targetUserRole.toLowerCase() === 'super usuario';
+			const isCurrentSuperUser = currentRole.toLowerCase() === 'super usuario';
+			const allowedRoles = ['Super usuario', 'Administrador'];
+			const hasAllowedRole = allowedRoles.includes(currentRole);
+			
+			if (!hasAllowedRole) {
+				return 'No tienes permisos para resetear contraseñas';
+			}
+			
+			if (isTargetSuperUser && !isCurrentSuperUser) {
+				return 'Solo los Super usuarios pueden resetear la contraseña de otros Super usuarios';
+			}
+			
+			if (currentUserId === targetUserId && !isCurrentSuperUser) {
+				return 'No puedes resetear tu propia contraseña';
+			}
+			
+			return '';
+		}
+	},
+})
+</script>
+
+<style scoped>
+.table-header {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.table-header-top {
+	display: flex;
+	align-items: center;
+}
+
+.table-header-controls {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.table-search {
+	width: 220px;
+	flex: 1 1 220px;
+	min-width: 160px;
+}
+
+@media (max-width: 767px) {
+	.table-header-controls {
+		justify-content: flex-start;
+	}
+	.table-search {
+		width: 100%;
+		min-width: 0;
+	}
+}
+
+.table-actions {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+	justify-content: flex-end;
+	white-space: nowrap;
+	margin-right: 16px;
+}
+
+.table-firstcol--expandable {
+	cursor: pointer;
+	user-select: none;
+}
+
+.table-firstcol__title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.table-firstcol__caret {
+	display: inline-block;
+	width: 14px;
+	text-align: center;
+	color: rgba(17, 24, 39, 0.55);
+}
+
+.user-expanded {
+	padding: 10px 12px;
+	background: rgba(17, 24, 39, 0.02);
+	border: 1px solid rgba(17, 24, 39, 0.06);
+	border-radius: 12px;
+}
+
+.user-expanded__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+
+.user-expanded__header-left {
+	min-width: 0;
+}
+
+.user-expanded__title {
+	font-weight: 800;
+	color: #111827;
+	line-height: 1.2;
+}
+
+.user-expanded__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px 14px;
+}
+
+.user-expanded__label {
+	font-size: 12px;
+	color: rgba(17, 24, 39, 0.6);
+}
+
+.user-expanded__value {
+	font-size: 13px;
+	color: #111827;
+	word-break: break-word;
+}
+
+.user-expanded__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+/* asegurar que wrappers de Popconfirm no rompan alineación */
+.user-expanded__actions > * {
+	display: inline-flex;
+}
+
+@media (max-width: 767px) {
+	.user-expanded__actions {
+		width: 100%;
+		justify-content: flex-start;
+	}
+}
+
+.btn-warning-outline.ant-btn {
+	background: transparent;
+	border: 1px solid #f59e0b;
+	color: #b45309;
+	box-shadow: none;
+}
+
+.btn-warning-outline.ant-btn:hover,
+.btn-warning-outline.ant-btn:focus {
+	background: rgba(245, 158, 11, 0.10);
+	border-color: #d97706;
+	color: #92400e;
+}
+
+.btn-warning-outline.ant-btn:active {
+	background: rgba(245, 158, 11, 0.18);
+	border-color: #b45309;
+	color: #78350f;
+}
+
+.table-clickable-image {
+	cursor: zoom-in;
+}
+
+.table-clickable-image[style*="cursor: default"] {
+	cursor: default !important;
+}
+
+.table-avatar-info--left {
+	justify-content: flex-start !important;
+}
+
+.table-avatar-info--left .avatar-info {
+	text-align: left;
+}
+</style>
