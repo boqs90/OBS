@@ -51,6 +51,30 @@
 				<div class="sidebar-overlay" @click="sidebarCollapsed = true" v-show="! sidebarCollapsed"></div>
 				<!-- / Sidebar Overlay -->
 
+				<!-- Chat Components -->
+				<FloatingChatButton
+					:isOpen="showChatWindow"
+					@toggle="toggleChat"
+				/>
+				<ChatWindow
+					:visible="showChatWindow"
+					@close="showChatWindow = false"
+					@minimize="showChatWindow = false"
+					@settings-changed="handleChatSettingsChanged"
+				/>
+				<!-- / Chat Components -->
+
+				<!-- Comunicado Modal -->
+				<ComunicadoModal
+					:visible="showComunicadoModal"
+					:autoClose="getComunicadoSettings().autoClose"
+					:autoCloseDelay="getComunicadoSettings().autoCloseDelay"
+					@cancel="handleComunicadoCancel"
+					@ok="handleComunicadoOk"
+					@auto-close="handleComunicadoAutoClose"
+				/>
+				<!-- / Comunicado Modal -->
+
 			</a-layout>
 			<!-- / Layout Content -->
 			
@@ -78,6 +102,10 @@
 	import DashboardHeader from '../components/Headers/DashboardHeader' ;
 	import DashboardFooter from '../components/Footers/DashboardFooter' ;
 	import DashboardSettingsDrawer from '../components/Sidebars/DashboardSettingsDrawer' ;
+	import FloatingChatButton from '../components/Chat/FloatingChatButton' ;
+	import ChatWindow from '../components/Chat/ChatWindow' ;
+	import ComunicadoModal from '../components/Comunicados/ComunicadoModal.vue' ;
+	import comunicadoService from '@/services/comunicadoService';
 
 	export default ({
 		components: {
@@ -85,6 +113,9 @@
 			DashboardHeader,
 			DashboardFooter,
 			DashboardSettingsDrawer,
+			FloatingChatButton,
+			ChatWindow,
+			ComunicadoModal,
 		},
 		data() {
 			return {
@@ -102,6 +133,12 @@
 
 				// Settings drawer visiblility status.
 				showSettingsDrawer: false,
+				
+				// Chat window visibility status.
+				showChatWindow: false,
+				
+				// Comunicado modal visibility status.
+				showComunicadoModal: false,
 			}
 		},
 		methods: {
@@ -120,6 +157,44 @@
 			updateSidebarColor( value ) {
 				this.sidebarColor = value ;
 			},
+			toggleChat() {
+				this.showChatWindow = !this.showChatWindow;
+			},
+			handleChatSettingsChanged(settings) {
+				// Handle chat settings changes if needed
+				console.log('Chat settings changed:', settings);
+			},
+			// Métodos para el modal de comunicados
+			checkComunicadosOnLogin() {
+				const settings = comunicadoService.getSettings();
+				if (settings.enabled && settings.showOnLogin) {
+					// Mostrar modal después de un pequeño delay para que la página cargue
+					setTimeout(() => {
+						this.showComunicadoModal = true;
+					}, 1000);
+				}
+			},
+			getComunicadoSettings() {
+				return comunicadoService.getSettings();
+			},
+			handleComunicadoCancel() {
+				this.showComunicadoModal = false;
+			},
+			handleComunicadoOk() {
+				this.showComunicadoModal = false;
+				this.$message.success('Gracias por revisar los comunicados');
+			},
+			handleComunicadoAutoClose() {
+				this.showComunicadoModal = false;
+				this.$message.info('El modal de comunicados se cerró automáticamente');
+			},
+		},
+		mounted() {
+			// Set the wrapper to the proper element, layout wrapper.
+			this.wrapper = document.getElementById('layout-dashboard') ;
+			
+			// Verificar comunicados al iniciar sesión
+			this.checkComunicadosOnLogin();
 		},
 		computed: {
 			// Sets layout's element's class based on route's meta data.

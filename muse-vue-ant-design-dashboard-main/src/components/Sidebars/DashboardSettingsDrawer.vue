@@ -44,6 +44,99 @@
 					<a-button type="link" @click="navigateToConfig('/configuraciones/calendario')" block style="text-align: left; padding: 8px 12px;">
 						📅 Calendario escolar
 					</a-button>
+					<a-button type="link" @click="navigateToConfig('/configuracion/redes-sociales')" block style="text-align: left; padding: 8px 12px;">
+						🌐 Redes sociales
+					</a-button>
+				</div>
+			</div>
+			<hr>
+			
+			<!-- Chat Settings Section -->
+			<div v-if="canEditChatSettings" class="chat-settings-section">
+				<h6>💬 Configuración del Chat</h6>
+				<div class="setting-item">
+					<label>Habilitar chat de soporte</label>
+					<a-switch v-model="chatSettings.enabled" @change="updateChatSettings" />
+				</div>
+				<div class="setting-item">
+					<label>Mostrar botón flotante</label>
+					<a-switch v-model="chatSettings.floatingButtonVisible" @change="updateChatSettings" />
+				</div>
+				<div class="setting-item">
+					<label>Días de retención de mensajes</label>
+					<a-input-number 
+						v-model="chatSettings.retentionDays" 
+						:min="1" 
+						:max="30" 
+						@change="updateChatSettings"
+						style="width: 100px;" />
+				</div>
+				<div class="setting-item">
+					<label>Posición del botón</label>
+					<a-select v-model="chatSettings.position" @change="updateChatSettings" style="width: 150px;">
+						<a-select-option value="bottom-right">Inf. Derecha</a-select-option>
+						<a-select-option value="bottom-left">Inf. Izquierda</a-select-option>
+						<a-select-option value="top-right">Sup. Derecha</a-select-option>
+						<a-select-option value="top-left">Sup. Izquierda</a-select-option>
+					</a-select>
+				</div>
+			</div>
+			<div v-else-if="canViewChat" class="chat-settings-section">
+				<h6>💬 Configuración del Chat</h6>
+				<a-alert 
+					message="Permisos insuficientes" 
+					description="No tienes permisos para modificar la configuración del chat. Contacta a un administrador."
+					type="info" 
+					show-icon 
+				/>
+			</div>
+
+			<!-- Comunicados Settings Section -->
+			<div class="comunicados-settings-section">
+				<h6>📢 Configuración de Comunicados</h6>
+				<div class="setting-item">
+					<label>Estado del sistema</label>
+					<a-switch v-model="comunicadoSettings.enabled" @change="updateComunicadoSettings" />
+				</div>
+				<div class="setting-item">
+					<label>Mostrar al iniciar sesión</label>
+					<a-switch v-model="comunicadoSettings.showOnLogin" @change="updateComunicadoSettings" />
+				</div>
+				<div class="setting-item">
+					<label>Cierre automático</label>
+					<a-switch v-model="comunicadoSettings.autoClose" @change="updateComunicadoSettings" />
+				</div>
+				<div v-if="comunicadoSettings.autoClose" class="setting-item">
+					<label>Tiempo de cierre (segundos)</label>
+					<a-input-number 
+						v-model="comunicadoSettings.autoCloseDelay" 
+						:min="5" 
+						:max="300" 
+						@change="updateComunicadoSettings"
+						style="width: 100px;" />
+				</div>
+				<div class="setting-item">
+					<label>Permitir subida de archivos</label>
+					<a-switch v-model="comunicadoSettings.allowUploads" @change="updateComunicadoSettings" />
+				</div>
+				<div v-if="comunicadoSettings.allowUploads" class="setting-item">
+					<label>Tamaño máximo (MB)</label>
+					<a-input-number 
+						v-model="comunicadoSettings.maxFileSize" 
+						:min="1" 
+						:max="100" 
+						@change="updateComunicadoSettings"
+						style="width: 100px;" />
+				</div>
+				<div class="setting-item">
+					<label>Requerir aceptación</label>
+					<a-switch v-model="comunicadoSettings.requireAcceptance" @change="updateComunicadoSettings" />
+				</div>
+				<div class="setting-item">
+					<a-button type="primary" size="small" @click="openComunicadoSettings">
+						<a-icon type="setting" />
+						Configuración Avanzada
+					</a-button>
 				</div>
 			</div>
 			<hr>
@@ -86,9 +179,13 @@
 	import 'vue-github-buttons/dist/vue-github-buttons.css'; // Stylesheet
 	import VueGitHubButtons from 'vue-github-buttons';
 	import Vue from 'vue';
+	import chatService from '@/services/chatService';
+	import comunicadoService from '@/services/comunicadoService';
+	import { permissionsMixin } from '@/utils/permissions';
 	Vue.use(VueGitHubButtons, { useCache: true });
 
 	export default ({
+		mixins: [permissionsMixin],
 		props: {
 			// Settings drawer visiblility status.
 			showSettingsDrawer: {
@@ -120,6 +217,14 @@
 				default: false,
 			},
 		},
+		computed: {
+			canEditChatSettings() {
+				return this.$canEditChatSettings();
+			},
+			canViewChat() {
+				return this.$canViewChat();
+			}
+		},
 		data() {
 			return {
 				// The wrapper element to attach dropdowns to.
@@ -133,6 +238,12 @@
 
 				// Header fixed status.
 				navbarFixedModel: this.navbarFixed,
+				
+				// Chat settings
+				chatSettings: { ...chatService.getSettings() },
+				
+				// Comunicados settings
+				comunicadoSettings: { ...comunicadoService.getSettings() },
 			}
 		},
 		mounted: function(){
@@ -145,8 +256,80 @@
 				this.$emit('toggleSettingsDrawer', false);
 				// Navigate to the configuration page
 				this.$router.push(path);
+			},
+			updateChatSettings() {
+				if (!this.canEditChatSettings()) {
+					this.$message.error('No tienes permisos para modificar la configuración del chat');
+					return;
+				}
+				
+				if (chatService.saveSettings(this.chatSettings)) {
+					this.$message.success('Configuración del chat actualizada');
+					// Emit event to notify chat components
+					this.$emit('chat-settings-changed', this.chatSettings);
+				} else {
+					this.$message.error('Error al guardar la configuración del chat');
+				}
+			},
+			updateComunicadoSettings() {
+				if (comunicadoService.saveSettings(this.comunicadoSettings)) {
+					this.$message.success('Configuración de comunicados actualizada');
+					// Emit event to notify components
+					this.$emit('comunicado-settings-changed', this.comunicadoSettings);
+				} else {
+					this.$message.error('Error al guardar la configuración de comunicados');
+				}
+			},
+			openComunicadoSettings() {
+				// Navigate to comunicado settings page
+				this.navigateToConfig('/comunicados/settings');
 			}
 		},
 	})
 
 </script>
+
+<style scoped>
+.chat-settings-section {
+	margin-bottom: 20px;
+}
+
+.comunicados-settings-section {
+	margin-bottom: 20px;
+}
+
+.chat-settings-section h6,
+.comunicados-settings-section h6 {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+	padding: 8px 0;
+}
+
+.setting-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+	padding: 8px 0;
+}
+
+.setting-item label {
+	font-size: 13px;
+	color: #595959;
+	margin: 0;
+}
+
+.setting-item .ant-switch,
+.setting-item .ant-input-number,
+.setting-item .ant-select {
+	margin-left: 12px;
+}
+
+.chat-settings-section h6 {
+	margin-bottom: 16px;
+	color: #262626;
+	font-weight: 500;
+}
+</style>
