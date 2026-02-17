@@ -21,6 +21,7 @@ let routes = [
   { path: '/configuraciones/parametros-academicos', name: 'Parámetros Académicos', component: () => import('../views/ConfiguracionesParametrosAcademicos.vue'), meta: { layout: 'dashboard', title: 'Parámetros Académicos', screenKey: '/configuraciones/parametros-academicos' } },
   { path: '/configuraciones/calendario', name: 'Calendario Escolar', component: () => import('../views/ConfiguracionesCalendarioEscolar.vue'), meta: { layout: 'dashboard', title: 'Calendario Escolar', screenKey: '/configuraciones/calendario' } },
   { path: '/profile', name: 'Perfiles', component: () => import('../views/Profile.vue'), meta: { layout: 'dashboard', title: 'Perfiles', screenKey: '/profile' } },
+  { path: '/search', name: 'Búsqueda Global', component: () => import('../views/GlobalSearch.vue'), meta: { layout: 'dashboard', title: 'Búsqueda Global', screenKey: '/search' } },
   { path: '/rtl', name: 'Reportes', component: () => import('../views/RTL.vue'), meta: { layout: 'dashboard', title: 'Reportes', screenKey: '/rtl' } },
   { path: '/notificaciones', name: 'Notificaciones', component: () => import('../views/Notificaciones.vue'), meta: { layout: 'dashboard', title: 'Notificaciones', screenKey: '/notificaciones' } },
   { path: '/sesiones', name: 'Sesiones', component: () => import('../views/Sesiones.vue'), meta: { layout: 'dashboard', title: 'Sesiones', screenKey: '/sesiones' } },
@@ -50,7 +51,9 @@ let routes = [
   { path: '/inventario/control', name: 'Control de Inventario', component: () => import('../views/InventoryControl.vue'), meta: { layout: 'dashboard', title: 'Control de Inventario', screenKey: '/inventario/control' } },
   { path: '/inventario/ventas', name: 'Ventas de Insumos', component: () => import('../views/VentasInsumos.vue'), meta: { layout: 'dashboard', title: 'Ventas de Insumos', screenKey: '/inventario/ventas' } },
   // Reporte de errores y mejoras
-  { path: '/reportes/errores', name: 'Reporte de Errores', component: () => import('../views/BugReports.vue'), meta: { layout: 'dashboard', title: 'Reporte de Errores', screenKey: '/reportes/errores' } },
+  { path: '/reportes/errores', name: 'Reporte de Errores', component: () => import('../views/reportes/errores.vue'), meta: { layout: 'dashboard', title: 'Reporte de Errores', screenKey: '/reportes/errores' } },
+  // Configuración de redes sociales
+  { path: '/configuracion/redes-sociales', name: 'Configuración de Redes Sociales', component: () => import('../views/ConfiguracionRedesSociales.vue'), meta: { layout: 'dashboard', title: 'Configuración de Redes Sociales', screenKey: '/configuracion/redes-sociales' } },
   // Registro de asignaturas
   { path: '/registro/asignaturas', name: 'Registro de Asignaturas', component: () => import('../views/Asignaturas.vue'), meta: { layout: 'dashboard', title: 'Registro de Asignaturas', screenKey: '/registro/asignaturas' } },
   // Comunicados

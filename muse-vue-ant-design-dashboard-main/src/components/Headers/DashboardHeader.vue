@@ -107,9 +107,19 @@
 
 					<a-dropdown :trigger="['click']" overlayClassName="header-user-dropdown" :getPopupContainer="() => wrapper">
 						<a class="header-user-trigger" href="#" @click="preventDefault">
-							<a-avatar class="header-user-avatar" :style="{ backgroundColor: '#7c3aed' }">
+							<a-avatar 
+								class="header-user-avatar" 
+								:size="40"
+								:src="userProfilePhoto"
+								:style="{ backgroundColor: '#7c3aed' }"
+								@error="onProfileImageError"
+							>
 								{{ userInitials }}
 							</a-avatar>
+							<div class="header-user-info">
+								<div class="header-user-name">{{ (currentUser && currentUser.name) ? currentUser.name : 'Usuario' }}</div>
+								<div class="header-user-role">{{ userRole }}</div>
+							</div>
 						</a>
 
 						<a-menu slot="overlay" class="header-user-menu">
@@ -140,11 +150,36 @@
 					<!-- / Header Control Buttons -->
 
 					<!-- Header Search Input -->
-					<a-input-search class="header-search" :class="searchLoading ? 'loading' : ''" placeholder="Busqueda" @search="onSearch" :loading='searchLoading' :maxLength="200">
-						<svg slot="prefix" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-							<path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C5.79086 4 4 5.79086 4 8C4 10.2091 5.79086 12 8 12C10.2091 12 12 10.2091 12 8C12 5.79086 10.2091 4 8 4ZM2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 9.29583 13.5892 10.4957 12.8907 11.4765L17.7071 16.2929C18.0976 16.6834 18.0976 17.3166 17.7071 17.7071C17.3166 18.0976 16.6834 18.0976 16.2929 17.7071L11.4765 12.8907C10.4957 13.5892 9.29583 14 8 14C4.68629 14 2 11.3137 2 8Z" fill="#111827"/>
-						</svg>
-					</a-input-search>
+					<a-dropdown 
+						:trigger="['click']" 
+						overlayClassName="header-search-dropdown"
+						:getPopupContainer="() => wrapper"
+						:visible="searchDropdownVisible"
+						@visibleChange="onSearchDropdownVisibleChange"
+					>
+						<a-input-search 
+							class="header-search" 
+							:class="searchLoading ? 'loading' : ''" 
+							placeholder="Buscar estudiantes, maestros, empleados..." 
+							@search="onSearch"
+							@input="onSearchInput"
+							:value="searchQuery"
+							:loading='searchLoading' 
+							:maxLength="200"
+							@click="openSearchDropdown"
+						>
+							<svg slot="prefix" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C5.79086 4 4 5.79086 4 8C4 10.2091 5.79086 12 8 12C10.2091 12 12 10.2091 12 8C12 5.79086 10.2091 4 8 4ZM2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 9.29583 13.5892 10.4957 12.8907 11.4765L17.7071 16.2929C18.0976 16.6834 18.0976 17.3166 17.7071 17.7071C17.3166 18.0976 16.6834 18.0976 16.2929 17.7071L11.4765 12.8907C10.4957 13.5892 9.29583 14 8 14C4.68629 14 2 11.3137 2 8Z" fill="#111827"/>
+							</svg>
+						</a-input-search>
+						
+						<div slot="overlay" class="header-search-popover">
+							<global-search-results 
+								:query="searchQuery"
+								@close="closeSearchDropdown"
+							/>
+						</div>
+					</a-dropdown>
 					<!-- / Header Search Input -->
 
 				</a-col>
@@ -166,9 +201,13 @@ import { logout } from '@/utils/auth';
 import { isLoggedIn } from '@/utils/auth';
 import { getToken } from '@/utils/auth';
 import { getUser } from '@/utils/auth';
+import { getProfilePhoto, getUserInitials, formatUserRole, handleImageError } from '@/utils/profileUtils';
+import GlobalSearchResults from '@/components/Search/GlobalSearchResults.vue';
+import searchService from '@/services/searchService';
 
 	export default ({
 		 components: {
+			GlobalSearchResults,
 		},
 		props: {
 			// Header fixed status.
@@ -190,6 +229,10 @@ import { getUser } from '@/utils/auth';
 
 				// Search input loading status.
 				searchLoading: false,
+				searchQuery: '',
+				searchDropdownVisible: false,
+				searchResults: [],
+				searchTimeout: null,
 
 				// The wrapper element to attach dropdowns to.
 				wrapper: document.body,
@@ -198,6 +241,16 @@ import { getUser } from '@/utils/auth';
 				notifications: [],
 				unreadCount: 0,
 			}
+		},
+		mounted() {
+			// Escuchar eventos de actualización de usuario
+			window.addEventListener('userUpdated', this.handleUserUpdated);
+			window.addEventListener('storage', this.handleStorageChange);
+		},
+		beforeDestroy() {
+			// Limpiar listeners
+			window.removeEventListener('userUpdated', this.handleUserUpdated);
+			window.removeEventListener('storage', this.handleStorageChange);
 		},
 		computed: {
 			currentTitle() {
@@ -210,12 +263,13 @@ import { getUser } from '@/utils/auth';
 				return getUser();
 			},
 			userInitials() {
-				const name = String(this.currentUser?.name || '').trim();
-				if (!name) return 'U';
-				const parts = name.split(/\s+/).filter(Boolean);
-				const first = parts[0]?.[0] || '';
-				const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : '') || '';
-				return (first + last).toUpperCase();
+				return getUserInitials(this.currentUser);
+			},
+			userProfilePhoto() {
+				return getProfilePhoto(this.currentUser);
+			},
+			userRole() {
+				return formatUserRole(this.currentUser);
 			},
 		},
 		methods: {
@@ -276,6 +330,18 @@ import { getUser } from '@/utils/auth';
 				const yyyy = d.getFullYear();
 				return `${dd}/${mm}/${yyyy}`;
 			},
+			// Manejar actualización de usuario
+			handleUserUpdated(event) {
+				// Forzar actualización del componente
+				this.$forceUpdate();
+			},
+			// Manejar cambios en localStorage
+			handleStorageChange(event) {
+				if (event.key === 'user') {
+					// Forzar actualización del componente
+					this.$forceUpdate();
+				}
+			},
 			fetchNotifications() {
 				this.notificationsLoading = true;
 				axios.get('http://localhost:8000/api/notifications', {
@@ -300,6 +366,10 @@ import { getUser } from '@/utils/auth';
 			},
 			goProfile() {
 				this.$router.push('/profile');
+			},
+			// Manejar error de carga de imagen
+			onProfileImageError(event) {
+				handleImageError(event);
 			},
 			notificationKind(item) {
 				return String(item?.kind || '').trim().toLowerCase();
@@ -365,6 +435,46 @@ import { getUser } from '@/utils/auth';
 				// scroller is anywhere but the top of the page.
 			},
 			onSearch(value){
+				if (!value || value.trim().length < 2) {
+					this.closeSearchDropdown();
+					return;
+				}
+				
+				// Abrir página de búsqueda global si se presiona Enter
+				this.$router.push({
+					path: '/search',
+					query: { q: value.trim() }
+				});
+				this.closeSearchDropdown();
+			},
+			onSearchInput(e) {
+				const value = e.target.value;
+				this.searchQuery = value;
+				
+				// Limpiar timeout anterior
+				if (this.searchTimeout) {
+					clearTimeout(this.searchTimeout);
+				}
+				
+				// Si hay suficientes caracteres, abrir dropdown después de un delay
+				if (value.trim().length >= 2) {
+					this.searchTimeout = setTimeout(() => {
+						this.searchDropdownVisible = true;
+					}, 300);
+				} else {
+					this.closeSearchDropdown();
+				}
+			},
+			openSearchDropdown() {
+				if (this.searchQuery.trim().length >= 2) {
+					this.searchDropdownVisible = true;
+				}
+			},
+			closeSearchDropdown() {
+				this.searchDropdownVisible = false;
+			},
+			onSearchDropdownVisibleChange(visible) {
+				this.searchDropdownVisible = visible;
 			},
 			confirmLogout() {
 				Modal.confirm({
@@ -481,11 +591,57 @@ import { getUser } from '@/utils/auth';
 	display: inline-flex;
 	align-items: center;
 	margin: 0 8px;
+	padding: 8px 12px;
+	border-radius: 12px;
+	transition: all 0.3s ease;
+	background: rgba(255, 255, 255, 0.8);
+	backdrop-filter: blur(10px);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.header-user-trigger:hover {
+	background: rgba(255, 255, 255, 0.95);
+	transform: translateY(-1px);
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
 .header-user-avatar {
-	box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
+	box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
 	font-weight: 800;
+	border: 2px solid #ffffff;
+	transition: all 0.3s ease;
+}
+
+.header-user-trigger:hover .header-user-avatar {
+	transform: scale(1.05);
+	box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
+}
+
+.header-user-info {
+	margin-left: 12px;
+	text-align: left;
+}
+
+.header-user-name {
+	font-weight: 700;
+	color: #111827;
+	font-size: 14px;
+	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 150px;
+}
+
+.header-user-role {
+	font-size: 12px;
+	color: #6b7280;
+	font-weight: 500;
+	margin-top: 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 150px;
 }
 
 .header-user-menu__me {
@@ -517,6 +673,114 @@ import { getUser } from '@/utils/auth';
 	.ant-breadcrumb,
 	.ant-page-header-heading {
 		display: none;
+	}
+	
+	.header-user-info {
+		display: none;
+	}
+	
+	.header-user-trigger {
+		padding: 8px;
+		margin: 0 4px;
+	}
+	
+	.header-user-avatar {
+		width: 32px !important;
+		height: 32px !important;
+		font-size: 12px !important;
+	}
+}
+
+/* Estilos para búsqueda global */
+.header-search-dropdown .ant-dropdown-menu {
+	padding: 0;
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.header-search-popover {
+	background: white;
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	min-width: 400px;
+	max-width: 500px;
+}
+
+.header-search {
+	width: 300px;
+	transition: all 0.3s ease;
+}
+
+.header-search:hover {
+	width: 320px;
+}
+
+.header-search:focus-within {
+	width: 350px;
+}
+
+.header-search .ant-input {
+	border-radius: 20px;
+	background: rgba(255, 255, 255, 0.9);
+	backdrop-filter: blur(10px);
+	border: 1px solid rgba(255, 255, 255, 0.3);
+	transition: all 0.3s ease;
+}
+
+.header-search .ant-input:focus {
+	background: white;
+	border-color: #7c3aed;
+	box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);
+}
+
+.header-search .ant-input-search .ant-input-suffix {
+	background: none;
+	border: none;
+}
+
+.header-search .ant-input-search .ant-input-suffix button {
+	border-radius: 0 20px 20px 0;
+	background: #7c3aed;
+	border-color: #7c3aed;
+}
+
+.header-search .ant-input-search .ant-input-suffix button:hover {
+	background: #6d28d9;
+	border-color: #6d28d9;
+}
+
+/* Responsive para búsqueda */
+@media (max-width: 767.98px) {
+	.header-search {
+		width: 200px;
+	}
+	
+	.header-search:hover,
+	.header-search:focus-within {
+		width: 220px;
+	}
+	
+	.header-search-popover {
+		min-width: 300px;
+		max-width: 90vw;
+	}
+}
+
+@media (max-width: 480px) {
+	.header-search {
+		width: 150px;
+	}
+	
+	.header-search:hover,
+	.header-search:focus-within {
+		width: 180px;
+	}
+	
+	.header-search-popover {
+		min-width: 250px;
+		max-width: 95vw;
 	}
 }
 </style>
