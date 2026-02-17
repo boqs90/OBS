@@ -61,10 +61,7 @@
 
 		<!-- Empty State -->
 		<div v-else-if="!hasQueried" class="empty-state">
-			<a-empty
-				:image="require('@/assets/images/search.svg')"
-				description="Comienza escribiendo para buscar"
-			>
+			<a-empty description="Comienza escribiendo para buscar">
 				<template #image>
 					<a-icon type="search" style="font-size: 64px; color: #d9d9d9;" />
 				</template>

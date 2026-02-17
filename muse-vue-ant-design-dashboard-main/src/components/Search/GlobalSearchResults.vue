@@ -8,10 +8,11 @@
 
     <!-- No Results -->
     <div v-else-if="!hasResults" class="search-no-results">
-      <a-empty
-        :image="require('@/assets/images/no-data.svg')"
-        description="No se encontraron resultados"
-      />
+      <a-empty description="No se encontraron resultados">
+        <template #image>
+          <a-icon type="file-search" style="font-size: 64px; color: #d9d9d9;" />
+        </template>
+      </a-empty>
     </div>
 
     <!-- Results -->
