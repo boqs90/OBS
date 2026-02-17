@@ -53,6 +53,30 @@
                     <a-icon type="flag" />
                     {{ comunicado.prioridad }}
                   </span>
+                  <span :class="['period-type', comunicado.tipo_periodo]">
+                    <a-icon :type="getPeriodIcon(comunicado.tipo_periodo)" />
+                    {{ getPeriodLabel(comunicado) }}
+                  </span>
+                  <span v-if="getDaysRemaining(comunicado) !== null" class="days-remaining">
+                    <a-icon type="clock-circle" />
+                    {{ getDaysRemaining(comunicado) }} días restantes
+                  </span>
+                  <span v-if="isExpiringSoon(comunicado)" class="expiring-soon">
+                    <a-icon type="warning" />
+                    Por expirar
+                  </span>
+                </div>
+                <div v-if="comunicado.tipo_periodo === 'periodo'" class="period-info">
+                  <span class="period-text">{{ formatPeriodo(comunicado) }}</span>
+                </div>
+                <div v-if="comunicado.tipo_periodo === 'un_vistazo'" class="single-view-info">
+                  <a-alert
+                    message="Comunicado de un solo vistazo"
+                    description="Este comunicado desaparecerá después de ser leído"
+                    type="info"
+                    show-icon
+                    size="small"
+                  />
                 </div>
               </div>
               <div class="comunicado-actions">
@@ -334,6 +358,15 @@ export default {
       
       if (accepted) {
         comunicadoService.markAsRead(comunicadoId);
+        
+        // Si es de un solo vistazo, podría necesitar cerrar el modal o actualizar
+        const comunicado = this.comunicados.find(c => c.id === comunicadoId);
+        if (comunicado && comunicado.tipo_periodo === 'un_vistazo') {
+          // Marcar como leído y actualizar la lista
+          setTimeout(() => {
+            this.loadComunicados();
+          }, 1000);
+        }
       }
     },
 
@@ -521,6 +554,47 @@ export default {
 
     isPDF(fileType, fileName) {
       return comunicadoService.isPDF(fileType, fileName);
+    },
+
+    // Métodos para manejo de períodos
+    getPeriodIcon(tipoPeriodo) {
+      switch (tipoPeriodo) {
+        case 'permanente':
+          return 'infinity';
+        case 'periodo':
+          return 'calendar';
+        case 'un_vistazo':
+          return 'eye';
+        default:
+          return 'info-circle';
+      }
+    },
+
+    getPeriodLabel(comunicado) {
+      if (!comunicado.tipo_periodo) return 'Sin definir';
+      
+      switch (comunicado.tipo_periodo) {
+        case 'permanente':
+          return 'Permanente';
+        case 'periodo':
+          return 'Por período';
+        case 'un_vistazo':
+          return 'Un solo vistazo';
+        default:
+          return 'Sin definir';
+      }
+    },
+
+    formatPeriodo(comunicado) {
+      return comunicadoService.formatPeriodo(comunicado);
+    },
+
+    getDaysRemaining(comunicado) {
+      return comunicadoService.getDaysRemaining(comunicado);
+    },
+
+    isExpiringSoon(comunicado) {
+      return comunicadoService.isExpiringSoon(comunicado);
     }
   },
 
@@ -609,6 +683,60 @@ export default {
 .priority.baja {
   background: #52c41a;
   color: white;
+}
+
+.period-type {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #1890ff;
+  color: white;
+}
+
+.period-type.permanente {
+  background: #722ed1;
+}
+
+.period-type.periodo {
+  background: #1890ff;
+}
+
+.period-type.un_vistazo {
+  background: #fa8c16;
+}
+
+.days-remaining {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #52c41a;
+  color: white;
+}
+
+.expiring-soon {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fa8c16;
+  color: white;
+  animation: pulse 2s infinite;
+}
+
+.period-info {
+  margin-top: 8px;
+}
+
+.period-text {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+.single-view-info {
+  margin-top: 8px;
 }
 
 .comunicado-body {

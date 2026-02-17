@@ -22,6 +22,7 @@ let routes = [
   { path: '/configuraciones/calendario', name: 'Calendario Escolar', component: () => import('../views/ConfiguracionesCalendarioEscolar.vue'), meta: { layout: 'dashboard', title: 'Calendario Escolar', screenKey: '/configuraciones/calendario' } },
   { path: '/profile', name: 'Perfiles', component: () => import('../views/Profile.vue'), meta: { layout: 'dashboard', title: 'Perfiles', screenKey: '/profile' } },
   { path: '/search', name: 'Búsqueda Global', component: () => import('../views/GlobalSearch.vue'), meta: { layout: 'dashboard', title: 'Búsqueda Global', screenKey: '/search' } },
+  { path: '/comunicados', name: 'Gestión de Comunicados', component: () => import('../views/ComunicadosManagement.vue'), meta: { layout: 'dashboard', title: 'Gestión de Comunicados', screenKey: '/comunicados' } },
   { path: '/rtl', name: 'Reportes', component: () => import('../views/RTL.vue'), meta: { layout: 'dashboard', title: 'Reportes', screenKey: '/rtl' } },
   { path: '/notificaciones', name: 'Notificaciones', component: () => import('../views/Notificaciones.vue'), meta: { layout: 'dashboard', title: 'Notificaciones', screenKey: '/notificaciones' } },
   { path: '/sesiones', name: 'Sesiones', component: () => import('../views/Sesiones.vue'), meta: { layout: 'dashboard', title: 'Sesiones', screenKey: '/sesiones' } },

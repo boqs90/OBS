@@ -68,30 +68,210 @@ class ComunicadoService {
     };
   }
 
-  // Obtener comunicados activos
+  // Obtener comunicados activos con filtrado por período y tipo
   async getActiveComunicados() {
     try {
       const response = await axios.get(`${this.baseURL}/comunicados/active`, {
         headers: this.getAuthHeaders()
       });
-      return response.data || [];
+      
+      const comunicados = response.data || [];
+      const currentUser = this.getCurrentUser();
+      
+      // Filtrar comunicados según tipo y período
+      return comunicados.filter(comunicado => {
+        // Verificar si el comunicado está activo
+        if (!comunicado.activo) return false;
+        
+        // Verificar período de tiempo
+        if (comunicado.tipo_periodo === 'periodo') {
+          const now = new Date();
+          const startDate = comunicado.fecha_inicio ? new Date(comunicado.fecha_inicio) : null;
+          const endDate = comunicado.fecha_fin ? new Date(comunicado.fecha_fin) : null;
+          
+          // Si hay fecha de inicio, verificar que ya haya comenzado
+          if (startDate && now < startDate) return false;
+          
+          // Si hay fecha de fin, verificar que no haya terminado
+          if (endDate && now > endDate) return false;
+        }
+        
+        // Para comunicados de un solo vistazo, verificar si ya fue leído
+        if (comunicado.tipo_periodo === 'un_vistazo') {
+          return !comunicado.leido;
+        }
+        
+        return true;
+      });
     } catch (error) {
       console.error('Error loading comunicados:', error);
       return [];
     }
   }
 
-  // Marcar comunicado como leído
+  // Crear comunicado con opciones de período
+  async createComunicado(comunicadoData) {
+    try {
+      const response = await axios.post(`${this.baseURL}/comunicados`, comunicadoData, {
+        headers: this.getAuthHeaders()
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating comunicado:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar comunicado
+  async updateComunicado(comunicadoId, comunicadoData) {
+    try {
+      const response = await axios.put(`${this.baseURL}/comunicados/${comunicadoId}`, comunicadoData, {
+        headers: this.getAuthHeaders()
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating comunicado:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar comunicado
+  async deleteComunicado(comunicadoId) {
+    try {
+      await axios.delete(`${this.baseURL}/comunicados/${comunicadoId}`, {
+        headers: this.getAuthHeaders()
+      });
+      return true;
+    } catch (error) {
+      console.error('Error deleting comunicado:', error);
+      return false;
+    }
+  }
+
+  // Verificar si un comunicado debe mostrarse
+  shouldShowComunicado(comunicado) {
+    const now = new Date();
+    
+    // Verificar si está activo
+    if (!comunicado.activo) return false;
+    
+    // Verificar según tipo de período
+    switch (comunicado.tipo_periodo) {
+      case 'permanente':
+        return true;
+        
+      case 'periodo':
+        const startDate = comunicado.fecha_inicio ? new Date(comunicado.fecha_inicio) : null;
+        const endDate = comunicado.fecha_fin ? new Date(comunicado.fecha_fin) : null;
+        
+        // Verificar que ya haya comenzado
+        if (startDate && now < startDate) return false;
+        
+        // Verificar que no haya terminado
+        if (endDate && now > endDate) return false;
+        
+        return true;
+        
+      case 'un_vistazo':
+        // Solo mostrar si no ha sido leído
+        return !comunicado.leido;
+        
+      default:
+        return true;
+    }
+  }
+
+  // Obtener comunicados expirados (para limpieza)
+  async getExpiredComunicados() {
+    try {
+      const response = await axios.get(`${this.baseURL}/comunicados/expired`, {
+        headers: this.getAuthHeaders()
+      });
+      return response.data || [];
+    } catch (error) {
+      console.error('Error loading expired comunicados:', error);
+      return [];
+    }
+  }
+
+  // Marcar comunicado como leído y manejar tipo de período
   async markAsRead(comunicadoId) {
     try {
       await axios.post(`${this.baseURL}/comunicados/${comunicadoId}/read`, {}, {
         headers: this.getAuthHeaders()
       });
+      
+      // Si es de un solo vistazo, podría necesitar lógica adicional
       return true;
     } catch (error) {
       console.error('Error marking comunicado as read:', error);
       return false;
     }
+  }
+
+  // Obtener estadísticas de comunicados
+  async getComunicadoStats() {
+    try {
+      const response = await axios.get(`${this.baseURL}/comunicados/stats`, {
+        headers: this.getAuthHeaders()
+      });
+      return response.data || {};
+    } catch (error) {
+      console.error('Error loading comunicado stats:', error);
+      return {};
+    }
+  }
+
+  // Formatear fecha de período
+  formatPeriodo(comunicado) {
+    if (!comunicado.tipo_periodo || comunicado.tipo_periodo === 'permanente') {
+      return 'Permanente';
+    }
+    
+    if (comunicado.tipo_periodo === 'un_vistazo') {
+      return 'Un solo vistazo';
+    }
+    
+    if (comunicado.tipo_periodo === 'periodo') {
+      const startDate = comunicado.fecha_inicio ? new Date(comunicado.fecha_inicio) : null;
+      const endDate = comunicado.fecha_fin ? new Date(comunicado.fecha_fin) : null;
+      
+      if (startDate && endDate) {
+        return `Del ${this.formatDate(startDate)} al ${this.formatDate(endDate)}`;
+      } else if (startDate) {
+        return `Desde ${this.formatDate(startDate)}`;
+      } else if (endDate) {
+        return `Hasta ${this.formatDate(endDate)}`;
+      }
+    }
+    
+    return 'Sin definir';
+  }
+
+  // Verificar si un comunicado está por expirar
+  isExpiringSoon(comunicado) {
+    if (comunicado.tipo_periodo !== 'periodo' || !comunicado.fecha_fin) {
+      return false;
+    }
+    
+    const now = new Date();
+    const endDate = new Date(comunicado.fecha_fin);
+    const daysUntilExpiry = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+    
+    return daysUntilExpiry <= 3 && daysUntilExpiry > 0;
+  }
+
+  // Obtener días restantes
+  getDaysRemaining(comunicado) {
+    if (comunicado.tipo_periodo !== 'periodo' || !comunicado.fecha_fin) {
+      return null;
+    }
+    
+    const now = new Date();
+    const endDate = new Date(comunicado.fecha_fin);
+    const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+    
+    return daysRemaining > 0 ? daysRemaining : 0;
   }
 
   // Subir archivo
